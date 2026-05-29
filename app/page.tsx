@@ -1,65 +1,226 @@
-import Image from "next/image";
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { supabase } from "@/app/supabase";
+import {
+  PlusCircle,
+  TrendingUp,
+  TrendingDown,
+  Users,
+  Wallet,
+  Loader2,
+  History,
+} from "lucide-react";
+
+type Mission = {
+  id: string;
+  created_at: string;
+  mission_name: string;
+  amount: number;
+  player_name: string;
+  date: string;
+};
 
 export default function Home() {
+  const [missions, setMissions] = useState<Mission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    amount: "",
+    player: "Sami",
+    date: new Date().toISOString().split('T')[0]
+  });
+
+  useEffect(() => {
+    fetchMissions();
+  }, []);
+
+  async function fetchMissions() {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("missions")
+        .select("*")
+        .order("date", { ascending: false })
+        .order("created_at", { ascending: false });
+
+      if (!error && data) setMissions(data);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name || !form.amount) return;
+
+    setIsSubmitting(true);
+    const { error } = await supabase.from("missions").insert([
+      {
+        mission_name: form.name,
+        amount: parseFloat(form.amount),
+        player_name: form.player,
+        date: form.date,
+      },
+    ]);
+
+    if (!error) {
+      setForm({
+        name: "",
+        amount: "",
+        player: form.player,
+        date: new Date().toISOString().split('T')[0]
+      });
+      fetchMissions();
+    }
+    setIsSubmitting(false);
+  }
+
+  const totalBalance = missions.reduce((acc, m) => acc + Number(m.amount), 0);
+  const splitAmount = totalBalance / 2;
+
+  // Groupement des missions par date pour le bilan quotidien
+  const groupedMissions = missions.reduce((groups: Record<string, Mission[]>, mission) => {
+    const date = mission.date;
+    if (!groups[date]) {
+      groups[date] = [];
+    }
+    groups[date].push(mission);
+    return groups;
+  }, {});
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-black text-white font-sans selection:bg-yellow-500/30">
+      <div className="max-w-4xl mx-auto px-6 py-12">
+        {/* Header */}
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-zinc-800 pb-8 gap-6">
+          <div>
+            <h1 className="text-4xl font-black tracking-tighter italic text-yellow-500">
+              BETIFY <span className="text-white">TRACKER</span>
+            </h1>
+            <p className="text-zinc-500 font-medium mt-1">Bilan Partagé : Sami & Brice</p>
+          </div>
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl min-w-[240px]">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Balance Collective</p>
+            <p className={`text-3xl font-mono font-bold ${totalBalance >= 0 ? "text-green-400" : "text-red-500"}`}>
+              {totalBalance > 0 ? "+" : ""}{totalBalance.toFixed(2)}€
+            </p>
+          </div>
+        </header>
+
+        {/* Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
+          <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl flex items-center gap-4">
+            <div className="bg-blue-500/10 p-3 rounded-full text-blue-400">
+              <Users size={24} />
+            </div>
+            <div>
+              <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider">Part Individuelle (50%)</p>
+              <p className="text-2xl font-bold">{splitAmount.toFixed(2)}€</p>
+            </div>
+          </div>
+          <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl flex items-center gap-4">
+            <div className="bg-purple-500/10 p-3 rounded-full text-purple-400">
+              <Wallet size={24} />
+            </div>
+            <div>
+              <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider">Missions Validées</p>
+              <p className="text-2xl font-bold">{missions.length}</p>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        {/* Input Form */}
+        <form onSubmit={handleSubmit} className="bg-zinc-900 p-2 rounded-2xl border border-zinc-700 flex flex-col md:flex-row gap-2 mb-12 shadow-2xl">
+          <input
+            required
+            className="flex-[2] bg-transparent p-4 outline-none text-white placeholder:text-zinc-600"
+            placeholder="Nom de la mission..."
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+          <input
+            required
+            type="number"
+            step="0.01"
+            className="md:w-32 bg-black rounded-xl p-4 outline-none border border-zinc-800 focus:border-yellow-500 transition-colors font-mono font-bold text-yellow-500"
+            placeholder="€ +/-"
+            value={form.amount}
+            onChange={(e) => setForm({ ...form, amount: e.target.value })}
+          />
+          <input
+            required
+            type="date"
+            className="bg-black border border-zinc-800 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase text-zinc-400 focus:text-white transition-colors"
+            value={form.date}
+            onChange={(e) => setForm({ ...form, date: e.target.value })}
+          />
+          <select
+            className="bg-black border border-zinc-800 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase"
+            value={form.player}
+            onChange={(e) => setForm({ ...form, player: e.target.value })}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <option value="Sami">Sami</option>
+            <option value="Brice">Brice</option>
+          </select>
+          <button
+            disabled={isSubmitting}
+            className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-black font-black px-8 py-4 rounded-xl transition-all flex items-center justify-center gap-2"
           >
-            Documentation
-          </a>
+            {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <PlusCircle size={20} />}
+            AJOUTER
+          </button>
+        </form>
+
+        {/* Activity Log */}
+        <div className="space-y-3">
+          <h3 className="flex items-center gap-2 text-xs font-black text-zinc-600 uppercase tracking-widest mb-6">
+            <History size={14} /> Historique des Gains
+          </h3>
+          {loading ? (
+            <div className="text-center py-20 text-zinc-700 italic animate-pulse">Synchronisation...</div>
+          ) : (
+            Object.entries(groupedMissions).map(([date, dayMissions]) => {
+              const dayTotal = dayMissions.reduce((acc, m) => acc + Number(m.amount), 0);
+              return (
+                <div key={date} className="mb-8">
+                  <div className="flex justify-between items-center px-2 mb-2">
+                    <span className="text-zinc-400 font-bold text-sm">
+                      {new Date(date).toLocaleDateString("fr-FR", { weekday: 'long', day: 'numeric', month: 'long' })}
+                    </span>
+                    <span className={`text-sm font-bold ${dayTotal >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      Bilan : {dayTotal > 0 ? "+" : ""}{dayTotal.toFixed(2)}€
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {dayMissions.map((m) => (
+                      <div key={m.id} className="bg-zinc-900/30 p-5 rounded-2xl border border-zinc-800/50 flex justify-between items-center hover:bg-zinc-900 transition-colors group">
+                        <div className="flex items-center gap-4">
+                          <div className={`p-2 rounded-full ${m.amount >= 0 ? "bg-green-500/10" : "bg-red-500/10"}`}>
+                            {m.amount >= 0 ? <TrendingUp size={18} className="text-green-500" /> : <TrendingDown size={18} className="text-red-500" />}
+                          </div>
+                          <div>
+                            <div className="font-bold text-zinc-200">{m.mission_name}</div>
+                            <div className="flex gap-2 items-center mt-1">
+                              <span className="text-[9px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400 font-black uppercase italic tracking-tighter">
+                                {m.player_name}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className={`font-mono font-black text-xl ${m.amount >= 0 ? "text-green-400" : "text-red-500"}`}>
+                          {m.amount > 0 ? "+" : ""}{Number(m.amount).toFixed(2)}€
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
-      </main>
+      </div>
     </div>
   );
 }
