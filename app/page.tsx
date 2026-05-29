@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/app/supabase";
 import {
   PlusCircle,
@@ -10,6 +10,7 @@ import {
   Wallet,
   Loader2,
   History,
+  Trash2,
 } from "lucide-react";
 
 type Mission = {
@@ -45,7 +46,10 @@ export default function Home() {
         .order("date", { ascending: false })
         .order("created_at", { ascending: false });
 
-      if (!error && data) setMissions(data);
+      if (error) throw error;
+      if (data) setMissions(data);
+    } catch (err) {
+      console.error("Erreur lors de la récupération des missions:", err);
     } finally {
       setLoading(false);
     }
@@ -56,39 +60,55 @@ export default function Home() {
     if (!form.name || !form.amount) return;
 
     setIsSubmitting(true);
-    const { error } = await supabase.from("missions").insert([
-      {
-        mission_name: form.name,
-        amount: parseFloat(form.amount),
-        player_name: form.player,
-        date: form.date,
-      },
-    ]);
+    try {
+      const { error } = await supabase.from("missions").insert([
+        {
+          mission_name: form.name,
+          amount: parseFloat(form.amount),
+          player_name: form.player,
+          date: form.date,
+        },
+      ]);
 
-    if (!error) {
-      setForm({
+      if (error) throw error;
+
+      setForm(prev => ({
+        ...prev,
         name: "",
         amount: "",
-        player: form.player,
-        date: new Date().toISOString().split('T')[0]
-      });
-      fetchMissions();
+      }));
+      await fetchMissions();
+    } catch (err: any) {
+      console.error("Erreur Supabase:", err);
+      alert(`Erreur : ${err.message || "Impossible d'ajouter la mission"}`);
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   }
 
-  const totalBalance = missions.reduce((acc, m) => acc + Number(m.amount), 0);
-  const splitAmount = totalBalance / 2;
+  async function deleteMission(id: string) {
+    if (!confirm("Supprimer cette mission ?")) return;
+    const { error } = await supabase.from("missions").delete().eq("id", id);
+    if (!error) fetchMissions();
+  }
 
-  // Groupement des missions par date pour le bilan quotidien
-  const groupedMissions = missions.reduce((groups: Record<string, Mission[]>, mission) => {
-    const date = mission.date;
-    if (!groups[date]) {
-      groups[date] = [];
-    }
-    groups[date].push(mission);
-    return groups;
-  }, {});
+  // Mémorisation des calculs pour la performance
+  const { totalBalance, splitAmount, groupedMissions } = useMemo(() => {
+    const total = missions.reduce((acc, m) => acc + Number(m.amount), 0);
+
+    const grouped = missions.reduce((groups: Record<string, Mission[]>, mission) => {
+      const date = mission.date;
+      if (!groups[date]) groups[date] = [];
+      groups[date].push(mission);
+      return groups;
+    }, {});
+
+    return {
+      totalBalance: total,
+      splitAmount: total / 2,
+      groupedMissions: grouped
+    };
+  }, [missions]);
 
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-yellow-500/30">
@@ -209,8 +229,16 @@ export default function Home() {
                             </div>
                           </div>
                         </div>
-                        <div className={`font-mono font-black text-xl ${m.amount >= 0 ? "text-green-400" : "text-red-500"}`}>
-                          {m.amount > 0 ? "+" : ""}{Number(m.amount).toFixed(2)}€
+                        <div className="flex items-center gap-4">
+                          <div className={`font-mono font-black text-xl ${m.amount >= 0 ? "text-green-400" : "text-red-500"}`}>
+                            {m.amount > 0 ? "+" : ""}{Number(m.amount).toFixed(2)}€
+                          </div>
+                          <button
+                            onClick={() => deleteMission(m.id)}
+                            className="text-zinc-700 hover:text-red-500 transition-colors p-1"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
                       </div>
                     ))}
