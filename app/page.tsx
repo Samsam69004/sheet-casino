@@ -88,8 +88,14 @@ export default function Home() {
 
   async function deleteMission(id: string) {
     if (!confirm("Supprimer cette mission ?")) return;
-    const { error } = await supabase.from("missions").delete().eq("id", id);
-    if (!error) fetchMissions();
+    try {
+      const { error } = await supabase.from("missions").delete().eq("id", id);
+      if (error) throw error;
+      await fetchMissions();
+    } catch (err: any) {
+      console.error("Erreur suppression:", err);
+      alert("Erreur lors de la suppression.");
+    }
   }
 
   async function resetHistory() {
@@ -136,6 +142,7 @@ export default function Home() {
             <h1 className="text-4xl font-black tracking-tighter italic text-yellow-500">
               BETIFY <span className="text-white">TRACKER</span>
             </h1>
+            <p className="text-[8px] text-zinc-800 uppercase tracking-widest font-bold">Production v1.1.0</p>
             <p className="text-zinc-500 font-medium mt-1">Bilan Partagé : Sami & Brice</p>
           </div>
           <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl min-w-[240px]">

@@ -7,7 +7,8 @@ const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 let supabaseUrl = '';
 if (rawUrl) {
   try {
-    supabaseUrl = new URL(rawUrl.trim()).origin;
+    const cleanUrl = rawUrl.trim().startsWith('http') ? rawUrl.trim() : `https://${rawUrl.trim()}`;
+    supabaseUrl = new URL(cleanUrl).origin;
   } catch (e) {
     supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, "").trim();
   }
