@@ -1,7 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 
-// On nettoie l'URL au cas où elle contiendrait déjà /rest/v1 (ce qui cause des erreurs 404)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/rest\/v1\/?$/, "");
+const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+// Extraction ultra-robuste de l'origine (ex: https://xyz.supabase.co)
+// Cela supprime /rest/v1, les slashs de fin ou les paramètres, peu importe le format en prod.
+let supabaseUrl = '';
+if (rawUrl) {
+  try {
+    supabaseUrl = new URL(rawUrl.trim()).origin;
+  } catch (e) {
+    supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, "").trim();
+  }
+}
+
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
