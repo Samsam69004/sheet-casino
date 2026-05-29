@@ -92,6 +92,23 @@ export default function Home() {
     if (!error) fetchMissions();
   }
 
+  async function resetHistory() {
+    if (!confirm("⚠️ ATTENTION : Voulez-vous vraiment supprimer TOUT l'historique ?")) return;
+
+    setIsSubmitting(true);
+    try {
+      // On utilise un filtre qui ne correspond à rien de précis mais autorise la suppression globale
+      const { error } = await supabase.from("missions").delete().neq("id", "_none_");
+      if (error) throw error;
+      await fetchMissions();
+    } catch (err: any) {
+      console.error("Erreur lors du reset:", err);
+      alert("Impossible de réinitialiser l'historique.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   // Mémorisation des calculs pour la performance
   const { totalBalance, splitAmount, groupedMissions } = useMemo(() => {
     const total = missions.reduce((acc, m) => acc + Number(m.amount), 0);
@@ -195,9 +212,19 @@ export default function Home() {
 
         {/* Activity Log */}
         <div className="space-y-3">
-          <h3 className="flex items-center gap-2 text-xs font-black text-zinc-600 uppercase tracking-widest mb-6">
-            <History size={14} /> Historique des Gains
-          </h3>
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="flex items-center gap-2 text-xs font-black text-zinc-600 uppercase tracking-widest">
+              <History size={14} /> Historique des Gains
+            </h3>
+            {missions.length > 0 && (
+              <button
+                onClick={resetHistory}
+                className="text-[10px] font-bold text-zinc-700 hover:text-red-500 transition-colors flex items-center gap-1"
+              >
+                <Trash2 size={12} /> REMETTRE À ZÉRO
+              </button>
+            )}
+          </div>
           {loading ? (
             <div className="text-center py-20 text-zinc-700 italic animate-pulse">Synchronisation...</div>
           ) : (
