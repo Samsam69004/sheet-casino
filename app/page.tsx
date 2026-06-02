@@ -13,6 +13,8 @@ import {
   Trash2,
   Pencil,
   X,
+  Trophy,
+  AlertTriangle,
 } from "lucide-react";
 
 type Mission = {
@@ -32,6 +34,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ text: string; type: 'win' | 'loss' } | null>(null);
   const [form, setForm] = useState({
     name: "",
     amount: "",
@@ -90,6 +93,14 @@ export default function Home() {
         if (error) throw error;
       }
 
+      const missionNet = missionData.amount + (missionData.byts * BYTE_VALUE);
+      if (missionNet > 0) {
+        setFeedback({ text: "voilààà GG championn, on vise le million", type: 'win' });
+      } else if (missionNet < 0) {
+        setFeedback({ text: "comportement inadmissible, tu tires l'équipe vers le bas", type: 'loss' });
+      }
+      setTimeout(() => setFeedback(null), 5000);
+
       setForm(prev => ({
         ...prev,
         name: "",
@@ -147,10 +158,17 @@ export default function Home() {
   }
 
   // Mémorisation des calculs pour la performance
-  const { totalBalance, totalByts, totalBytsValue, totalNet, splitAmount, debtMessage, groupedMissions, dailyRunningTotals } = useMemo(() => {
+  const { totalBalance, totalByts, totalBytsValue, totalNet, netSami, netBrice, splitAmount, debtMessage, groupedMissions, dailyRunningTotals } = useMemo(() => {
     const total = missions.reduce((acc, m) => acc + Number(m.amount || 0), 0);
     const byts = missions.reduce((acc, m) => acc + Number(m.byts || 0), 0);
     const bytsValue = byts * BYTE_VALUE;
+
+    const netSami = missions
+      .filter(m => m.player_name === "Sami")
+      .reduce((acc, m) => acc + (Number(m.amount) + (Number(m.byts || 0) * BYTE_VALUE)), 0);
+    const netBrice = missions
+      .filter(m => m.player_name === "Brice")
+      .reduce((acc, m) => acc + (Number(m.amount) + (Number(m.byts || 0) * BYTE_VALUE)), 0);
 
     const sumSami = missions.filter(m => m.player_name === "Sami").reduce((acc, m) => acc + Number(m.amount || 0), 0);
     const theoreticalShare = total / 2;
@@ -190,6 +208,8 @@ export default function Home() {
       totalByts: byts,
       totalBytsValue: bytsValue,
       totalNet: total + bytsValue,
+      netSami,
+      netBrice,
       splitAmount: theoreticalShare,
       debtMessage: debtMsg,
       groupedMissions: grouped,
@@ -199,6 +219,18 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-yellow-500/30">
+      {/* Feedback Animation */}
+      {feedback && (
+        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-50 animate-bounce pointer-events-none">
+          <div className={`${feedback.type === 'win' ? 'bg-green-500 border-green-400' : 'bg-red-600 border-red-500'} border-2 px-6 py-4 rounded-full shadow-[0_0_50px_rgba(0,0,0,0.5)] flex items-center gap-3`}>
+            {feedback.type === 'win' ? <Trophy className="text-white" /> : <AlertTriangle className="text-white" />}
+            <span className="font-black italic uppercase tracking-tighter text-white whitespace-nowrap">
+              {feedback.text}
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto px-6 py-12">
         {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-zinc-800 pb-8 gap-6">
@@ -225,7 +257,19 @@ export default function Home() {
         </header>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+          <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl">
+            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-2">Bilan Sami</p>
+            <p className={`text-xl font-mono font-black ${netSami >= 0 ? "text-green-400" : "text-red-500"}`}>
+              {netSami > 0 ? "+" : ""}{netSami.toFixed(2)}€
+            </p>
+          </div>
+          <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl">
+            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-2">Bilan Brice</p>
+            <p className={`text-xl font-mono font-black ${netBrice >= 0 ? "text-green-400" : "text-red-500"}`}>
+              {netBrice > 0 ? "+" : ""}{netBrice.toFixed(2)}€
+            </p>
+          </div>
           <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl flex items-center gap-4">
             <div className="bg-blue-500/10 p-3 rounded-full text-blue-400">
               <Users size={24} />
