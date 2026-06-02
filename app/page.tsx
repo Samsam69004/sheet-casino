@@ -41,7 +41,7 @@ export default function Home() {
   });
 
   useEffect(() => {
-    console.log("App betify-tracker v1.1.1 initialisée");
+    console.log("App betify-tracker v1.4.1 initialisée");
     fetchMissions();
   }, []);
 
@@ -147,7 +147,7 @@ export default function Home() {
   }
 
   // Mémorisation des calculs pour la performance
-  const { totalBalance, totalByts, totalBytsValue, splitAmount, debtMessage, groupedMissions } = useMemo(() => {
+  const { totalBalance, totalByts, totalBytsValue, totalNet, splitAmount, debtMessage, groupedMissions, dailyRunningTotals } = useMemo(() => {
     const total = missions.reduce((acc, m) => acc + Number(m.amount || 0), 0);
     const byts = missions.reduce((acc, m) => acc + Number(m.byts || 0), 0);
     const bytsValue = byts * BYTE_VALUE;
@@ -169,13 +169,31 @@ export default function Home() {
       return groups;
     }, {} as Record<string, Mission[]>);
 
+    // Calcul des totaux nets quotidiens et du cumul quotidien
+    const sortedDates = Object.keys(grouped).sort((a, b) => a.localeCompare(b)); // Tri des dates par ordre croissant
+    const cumulativeDailyNets: Record<string, number> = {};
+    let currentCumulativeNet = 0;
+
+    for (const date of sortedDates) {
+      const dayMissions = grouped[date];
+      const dayNet = dayMissions.reduce((acc, m) => acc + (Number(m.amount) + (Number(m.byts || 0) * BYTE_VALUE)), 0);
+      currentCumulativeNet += dayNet;
+      cumulativeDailyNets[date] = currentCumulativeNet;
+    }
+
+    // Les missions sont triées par date descendante pour l'affichage,
+    // mais le cumul est calculé sur les dates ascendantes.
+    // On utilisera cumulativeDailyNets[date] pour récupérer la bonne valeur.
+
     return {
       totalBalance: total,
       totalByts: byts,
       totalBytsValue: bytsValue,
+      totalNet: total + bytsValue,
       splitAmount: theoreticalShare,
       debtMessage: debtMsg,
       groupedMissions: grouped,
+      dailyRunningTotals: cumulativeDailyNets,
     };
   }, [missions]);
 
@@ -188,16 +206,19 @@ export default function Home() {
             <h1 className="text-4xl font-black tracking-tighter italic text-yellow-500">
               BETIFY <span className="text-white">TRACKER</span>
             </h1>
-            <p className="text-[8px] text-zinc-800 uppercase tracking-widest font-bold">Production v1.4.0</p>
+            <p className="text-[8px] text-zinc-800 uppercase tracking-widest font-bold">Production v1.4.1</p>
             <p className="text-zinc-500 font-medium mt-1">Bilan Partagé : Sami & Brice</p>
             <p className="text-[10px] text-zinc-600 font-bold uppercase mt-2">{missions.length} Missions Enregistrées</p>
           </div>
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl min-w-[240px] flex flex-col gap-1">
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl min-w-[280px] flex flex-col gap-1">
             <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Balance Collective</p>
             <p className="text-[10px] font-mono text-yellow-500/50">
               {totalByts.toLocaleString()} BYTS ({totalBytsValue.toFixed(2)}€)
             </p>
-            <p className={`text-3xl font-mono font-bold ${totalBalance >= 0 ? "text-green-400" : "text-red-500"}`}>
+            <p className={`text-[10px] font-mono font-bold ${totalNet >= 0 ? "text-green-400" : "text-red-500"}`}>
+              Bénéfice Net : {totalNet > 0 ? "+" : ""}{totalNet.toFixed(2)}€
+            </p>
+            <p className={`text-3xl font-mono font-bold mt-1 ${totalBalance >= 0 ? "text-green-400" : "text-red-500"}`}>
               {totalBalance > 0 ? "+" : ""}{totalBalance.toFixed(2)}€
             </p>
           </div>
@@ -311,16 +332,27 @@ export default function Home() {
             Object.entries(groupedMissions)
               .sort((a, b) => b[0].localeCompare(a[0]))
               .map(([date, dayMissions]) => {
-              const dayTotal = dayMissions.reduce((acc, m) => acc + Number(m.amount || 0), 0);
+              const dayCash = dayMissions.reduce((acc, m) => acc + Number(m.amount || 0), 0);
+              const dayNet = dayMissions.reduce((acc, m) => acc + (Number(m.amount) + (Number(m.byts || 0) * BYTE_VALUE)), 0);
+              const dayNetCumulated = dailyRunningTotals[date] || 0; // Net cumulé jusqu'à cette journée
               return (
                 <div key={date} className="mb-8">
                   <div className="flex justify-between items-center px-2 mb-2">
                     <span className="text-zinc-400 font-bold text-sm">
                       {new Date(date).toLocaleDateString("fr-FR", { weekday: 'long', day: 'numeric', month: 'long' })}
                     </span>
-                    <span className={`text-sm font-bold ${dayTotal >= 0 ? "text-green-500" : "text-red-500"}`}>
-                      Bilan : {dayTotal > 0 ? "+" : ""}{dayTotal.toFixed(2)}€
-                    </span>
+                    <div className="flex flex-col items-end">
+                      <span className={`text-sm font-bold ${dayNet >= 0 ? "text-green-500" : "text-red-500"}`}>
+                        Bénéfice Jour : {dayNet > 0 ? "+" : ""}{dayNet.toFixed(2)}€
+                      </span>
+                      <div className="flex gap-2 items-center">
+                        <span className="text-[9px] text-zinc-600 font-mono italic">Cash: {dayCash > 0 ? "+" : ""}{dayCash.toFixed(2)}€</span>
+                        <span className="text-zinc-800 text-[10px]">|</span>
+                        <span className={`text-[10px] font-mono font-bold ${dayNetCumulated >= 0 ? "text-green-400" : "text-red-500"}`}>
+                          Net Cumulé : {dayNetCumulated > 0 ? "+" : ""}{dayNetCumulated.toFixed(2)}€
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     {dayMissions.map((m) => {
@@ -328,6 +360,7 @@ export default function Home() {
                       const share = Math.abs(Number(m.amount)) / 2;
                       const missionByts = Number(m.byts || 0);
                       const missionBytsEuro = missionByts * BYTE_VALUE;
+                      const missionNet = Number(m.amount) + missionBytsEuro; // Bénéfice Net par mission
 
                       const missionDebt = Number(m.amount) > 0
                         ? `${m.player_name} doit ${share.toFixed(2)}€ à ${otherPlayer}`
@@ -362,11 +395,18 @@ export default function Home() {
                               <p className="font-mono text-[10px] text-orange-400 font-bold leading-tight">{missionDebt}</p>
                             </div>
 
-                            <div className="flex items-center gap-4 min-w-[100px] justify-end">
+                            <div className="flex items-center gap-4 min-w-[180px] justify-end">
                               <div className="text-right">
                                 <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest">Total Euros</p>
                                 <div className={`font-mono font-black text-lg ${m.amount >= 0 ? "text-green-400" : "text-red-500"}`}>
                                   {m.amount > 0 ? "+" : ""}{Number(m.amount).toFixed(2)}€
+                                </div>
+                              </div>
+
+                              <div className="text-right border-l border-zinc-800 pl-4">
+                                <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest">Bénéfice Net</p>
+                                <div className={`font-mono font-black text-lg ${missionNet >= 0 ? "text-green-400" : "text-red-500"}`}>
+                                  {missionNet > 0 ? "+" : ""}{missionNet.toFixed(2)}€
                                 </div>
                               </div>
 
