@@ -11,6 +11,8 @@ import {
   Loader2,
   History,
   Trash2,
+  Pencil,
+  X,
 } from "lucide-react";
 
 type Mission = {
@@ -19,21 +21,27 @@ type Mission = {
   mission_name: string;
   amount: number;
   player_name: string;
+  byts: number;
   date: string;
 };
+
+const BYTE_VALUE = 50 / 8000; // 1 byte = 0.00625€
 
 export default function Home() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
     amount: "",
+    byts: "",
     player: "Sami",
     date: new Date().toISOString().split('T')[0]
   });
 
   useEffect(() => {
+    console.log("App betify-tracker v1.1.1 initialisée");
     fetchMissions();
   }, []);
 
@@ -60,30 +68,53 @@ export default function Home() {
     if (!form.name || !form.amount) return;
 
     setIsSubmitting(true);
-    try {
-      const { error } = await supabase.from("missions").insert([
-        {
-          mission_name: form.name,
-          amount: parseFloat(form.amount),
-          player_name: form.player,
-          date: form.date,
-        },
-      ]);
+    const missionData = {
+      mission_name: form.name,
+      amount: parseFloat(form.amount),
+      byts: parseInt(form.byts) || 0,
+      player_name: form.player,
+      date: form.date,
+    };
 
-      if (error) throw error;
+    try {
+      if (editingId) {
+        const { error } = await supabase
+          .from("missions")
+          .update(missionData)
+          .eq("id", editingId);
+
+        if (error) throw error;
+        setEditingId(null);
+      } else {
+        const { error } = await supabase.from("missions").insert([missionData]);
+        if (error) throw error;
+      }
 
       setForm(prev => ({
         ...prev,
         name: "",
         amount: "",
+        byts: "",
       }));
       await fetchMissions();
     } catch (err: any) {
       console.error("Erreur Supabase:", err);
-      alert(`Erreur : ${err.message || "Impossible d'ajouter la mission"}`);
+      alert(`Erreur : ${err.message || "Action impossible"}`);
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function startEditing(m: Mission) {
+    setEditingId(m.id);
+    setForm({
+      name: m.mission_name,
+      amount: m.amount.toString(),
+      byts: (m.byts || 0).toString(),
+      player: m.player_name,
+      date: m.date,
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function deleteMission(id: string) {
@@ -116,20 +147,35 @@ export default function Home() {
   }
 
   // Mémorisation des calculs pour la performance
-  const { totalBalance, splitAmount, groupedMissions } = useMemo(() => {
-    const total = missions.reduce((acc, m) => acc + Number(m.amount), 0);
+  const { totalBalance, totalByts, totalBytsValue, splitAmount, debtMessage, groupedMissions } = useMemo(() => {
+    const total = missions.reduce((acc, m) => acc + Number(m.amount || 0), 0);
+    const byts = missions.reduce((acc, m) => acc + Number(m.byts || 0), 0);
+    const bytsValue = byts * BYTE_VALUE;
+
+    const sumSami = missions.filter(m => m.player_name === "Sami").reduce((acc, m) => acc + Number(m.amount || 0), 0);
+    const theoreticalShare = total / 2;
+    const debt = sumSami - theoreticalShare; // Si > 0, Sami a trop d'argent. Si < 0, Brice a trop d'argent.
+
+    const debtMsg = debt === 0
+      ? "Équilibre Parfait"
+      : debt > 0
+        ? { text: `Sami doit ${debt.toFixed(2)}€ à Brice`, type: 'debt' }
+        : { text: `Brice doit ${Math.abs(debt).toFixed(2)}€ à Sami`, type: 'debt' };
 
     const grouped = missions.reduce((groups: Record<string, Mission[]>, mission) => {
       const date = mission.date;
       if (!groups[date]) groups[date] = [];
       groups[date].push(mission);
       return groups;
-    }, {});
+    }, {} as Record<string, Mission[]>);
 
     return {
       totalBalance: total,
-      splitAmount: total / 2,
-      groupedMissions: grouped
+      totalByts: byts,
+      totalBytsValue: bytsValue,
+      splitAmount: theoreticalShare,
+      debtMessage: debtMsg,
+      groupedMissions: grouped,
     };
   }, [missions]);
 
@@ -142,11 +188,15 @@ export default function Home() {
             <h1 className="text-4xl font-black tracking-tighter italic text-yellow-500">
               BETIFY <span className="text-white">TRACKER</span>
             </h1>
-            <p className="text-[8px] text-zinc-800 uppercase tracking-widest font-bold">Production v1.1.0</p>
+            <p className="text-[8px] text-zinc-800 uppercase tracking-widest font-bold">Production v1.4.0</p>
             <p className="text-zinc-500 font-medium mt-1">Bilan Partagé : Sami & Brice</p>
+            <p className="text-[10px] text-zinc-600 font-bold uppercase mt-2">{missions.length} Missions Enregistrées</p>
           </div>
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl min-w-[240px]">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Balance Collective</p>
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl min-w-[240px] flex flex-col gap-1">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Balance Collective</p>
+            <p className="text-[10px] font-mono text-yellow-500/50">
+              {totalByts.toLocaleString()} BYTS ({totalBytsValue.toFixed(2)}€)
+            </p>
             <p className={`text-3xl font-mono font-bold ${totalBalance >= 0 ? "text-green-400" : "text-red-500"}`}>
               {totalBalance > 0 ? "+" : ""}{totalBalance.toFixed(2)}€
             </p>
@@ -165,18 +215,20 @@ export default function Home() {
             </div>
           </div>
           <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl flex items-center gap-4">
-            <div className="bg-purple-500/10 p-3 rounded-full text-purple-400">
+            <div className={`p-3 rounded-full ${typeof debtMessage === 'object' ? "bg-orange-500/10 text-orange-400" : "bg-purple-500/10 text-purple-400"}`}>
               <Wallet size={24} />
             </div>
             <div>
-              <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider">Missions Validées</p>
-              <p className="text-2xl font-bold">{missions.length}</p>
+              <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider">Règlement des Comptes</p>
+              <p className="text-lg font-bold leading-tight">
+                {typeof debtMessage === 'string' ? debtMessage : debtMessage.text}
+              </p>
             </div>
           </div>
         </div>
 
         {/* Input Form */}
-        <form onSubmit={handleSubmit} className="bg-zinc-900 p-2 rounded-2xl border border-zinc-700 flex flex-col md:flex-row gap-2 mb-12 shadow-2xl">
+        <form onSubmit={handleSubmit} className={`p-2 rounded-2xl border flex flex-col md:flex-row gap-2 mb-12 shadow-2xl transition-all duration-300 ${editingId ? 'bg-zinc-800 border-yellow-500 ring-4 ring-yellow-500/10' : 'bg-zinc-900 border-zinc-700'}`}>
           <input
             required
             className="flex-[2] bg-transparent p-4 outline-none text-white placeholder:text-zinc-600"
@@ -195,6 +247,15 @@ export default function Home() {
           />
           <input
             required
+            type="number"
+            min="0"
+            className="md:w-32 bg-black rounded-xl p-4 outline-none border border-zinc-800 focus:border-yellow-500 transition-colors font-mono font-bold text-blue-400"
+            placeholder="Byts"
+            value={form.byts}
+            onChange={(e) => setForm({ ...form, byts: e.target.value })}
+          />
+          <input
+            required
             type="date"
             className="bg-black border border-zinc-800 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase text-zinc-400 focus:text-white transition-colors"
             value={form.date}
@@ -210,11 +271,23 @@ export default function Home() {
           </select>
           <button
             disabled={isSubmitting}
-            className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-black font-black px-8 py-4 rounded-xl transition-all flex items-center justify-center gap-2"
+            className={`${editingId ? 'bg-blue-500 hover:bg-blue-400' : 'bg-yellow-500 hover:bg-yellow-400'} disabled:opacity-50 text-black font-black px-8 py-4 rounded-xl transition-all flex items-center justify-center gap-2`}
           >
-            {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <PlusCircle size={20} />}
-            AJOUTER
+            {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : editingId ? <Pencil size={20} /> : <PlusCircle size={20} />}
+            {editingId ? "MODIFIER" : "AJOUTER"}
           </button>
+          {editingId && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingId(null);
+                setForm({ name: "", amount: "", byts: "", player: "Sami", date: new Date().toISOString().split('T')[0] });
+              }}
+              className="bg-zinc-700 hover:bg-zinc-600 text-white font-black px-4 py-4 rounded-xl transition-all flex items-center justify-center"
+            >
+              <X size={20} />
+            </button>
+          )}
         </form>
 
         {/* Activity Log */}
@@ -223,7 +296,7 @@ export default function Home() {
             <h3 className="flex items-center gap-2 text-xs font-black text-zinc-600 uppercase tracking-widest">
               <History size={14} /> Historique des Gains
             </h3>
-            {missions.length > 0 && (
+            {missions.length > 0 && !editingId && (
               <button
                 onClick={resetHistory}
                 className="text-[10px] font-bold text-zinc-700 hover:text-red-500 transition-colors flex items-center gap-1"
@@ -235,8 +308,10 @@ export default function Home() {
           {loading ? (
             <div className="text-center py-20 text-zinc-700 italic animate-pulse">Synchronisation...</div>
           ) : (
-            Object.entries(groupedMissions).map(([date, dayMissions]) => {
-              const dayTotal = dayMissions.reduce((acc, m) => acc + Number(m.amount), 0);
+            Object.entries(groupedMissions)
+              .sort((a, b) => b[0].localeCompare(a[0]))
+              .map(([date, dayMissions]) => {
+              const dayTotal = dayMissions.reduce((acc, m) => acc + Number(m.amount || 0), 0);
               return (
                 <div key={date} className="mb-8">
                   <div className="flex justify-between items-center px-2 mb-2">
@@ -248,34 +323,72 @@ export default function Home() {
                     </span>
                   </div>
                   <div className="space-y-2">
-                    {dayMissions.map((m) => (
-                      <div key={m.id} className="bg-zinc-900/30 p-5 rounded-2xl border border-zinc-800/50 flex justify-between items-center hover:bg-zinc-900 transition-colors group">
-                        <div className="flex items-center gap-4">
-                          <div className={`p-2 rounded-full ${m.amount >= 0 ? "bg-green-500/10" : "bg-red-500/10"}`}>
-                            {m.amount >= 0 ? <TrendingUp size={18} className="text-green-500" /> : <TrendingDown size={18} className="text-red-500" />}
+                    {dayMissions.map((m) => {
+                      const otherPlayer = m.player_name === "Sami" ? "Brice" : "Sami";
+                      const share = Math.abs(Number(m.amount)) / 2;
+                      const missionByts = Number(m.byts || 0);
+                      const missionBytsEuro = missionByts * BYTE_VALUE;
+
+                      const missionDebt = Number(m.amount) > 0
+                        ? `${m.player_name} doit ${share.toFixed(2)}€ à ${otherPlayer}`
+                        : `${otherPlayer} doit ${share.toFixed(2)}€ à ${m.player_name}`;
+
+                      return (
+                        <div key={m.id} className="bg-zinc-900/30 p-5 rounded-2xl border border-zinc-800/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-zinc-900 transition-colors group">
+                          <div className="flex items-center gap-4">
+                            <div className={`p-2 rounded-full ${m.amount >= 0 ? "bg-green-500/10" : "bg-red-500/10"}`}>
+                              {m.amount >= 0 ? <TrendingUp size={18} className="text-green-500" /> : <TrendingDown size={18} className="text-red-500" />}
+                            </div>
+                            <div>
+                              <div className="font-bold text-zinc-200">{m.mission_name}</div>
+                              <div className="flex gap-2 items-center mt-1">
+                                <span className="text-[9px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400 font-black uppercase italic tracking-tighter">
+                                  {m.player_name}
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="font-bold text-zinc-200">{m.mission_name}</div>
-                            <div className="flex gap-2 items-center mt-1">
-                              <span className="text-[9px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400 font-black uppercase italic tracking-tighter">
-                                {m.player_name}
-                              </span>
+
+                          <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 sm:gap-8 w-full sm:w-auto justify-between sm:justify-end">
+                            {/* Colonne Byts */}
+                            <div className="text-left sm:text-right">
+                              <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest">Récompense Byts</p>
+                              <p className="font-mono text-xs text-blue-400 font-bold">{missionByts.toLocaleString()} ({missionBytsEuro.toFixed(2)}€)</p>
+                            </div>
+
+                            {/* Colonne Partage (Dettes) */}
+                            <div className="text-left sm:text-right min-w-[150px]">
+                              <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest whitespace-nowrap">Transfert pour 50/50</p>
+                              <p className="font-mono text-[10px] text-orange-400 font-bold leading-tight">{missionDebt}</p>
+                            </div>
+
+                            <div className="flex items-center gap-4 min-w-[100px] justify-end">
+                              <div className="text-right">
+                                <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest">Total Euros</p>
+                                <div className={`font-mono font-black text-lg ${m.amount >= 0 ? "text-green-400" : "text-red-500"}`}>
+                                  {m.amount > 0 ? "+" : ""}{Number(m.amount).toFixed(2)}€
+                                </div>
+                              </div>
+
+                              <div className="flex gap-1 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => startEditing(m)}
+                                  className="text-zinc-600 hover:text-blue-400 transition-colors p-2"
+                                >
+                                  <Pencil size={16} />
+                                </button>
+                                <button
+                                  onClick={() => deleteMission(m.id)}
+                                  className="text-zinc-600 hover:text-red-500 transition-colors p-2"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <div className={`font-mono font-black text-xl ${m.amount >= 0 ? "text-green-400" : "text-red-500"}`}>
-                            {m.amount > 0 ? "+" : ""}{Number(m.amount).toFixed(2)}€
-                          </div>
-                          <button
-                            onClick={() => deleteMission(m.id)}
-                            className="text-zinc-700 hover:text-red-500 transition-colors p-1"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
