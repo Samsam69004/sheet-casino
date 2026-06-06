@@ -163,7 +163,7 @@ export default function Home() {
   }
 
   // Mémorisation des calculs pour la performance
-  const { totalBalance, totalByts, totalBytsValue, totalNet, netSami, netBrice, splitAmount, debtMessage, groupedMissions, dailyRunningTotals } = useMemo(() => {
+  const { totalBalance, totalByts, totalBytsValue, totalNet, splitAmount, debtMessage, groupedMissions, dailyRunningTotals } = useMemo(() => {
     let total = 0;
     let byts = 0;
     let netSami = 0;
@@ -234,8 +234,6 @@ export default function Home() {
       totalByts: byts,
       totalBytsValue: byts * BYTE_VALUE,
       totalNet: total + (byts * BYTE_VALUE),
-      netSami,
-      netBrice,
       splitAmount: total / 2,
       debtMessage: debtMsg,
       groupedMissions: grouped,
@@ -273,29 +271,18 @@ export default function Home() {
             <p className="text-[10px] font-mono text-yellow-500/50">
               {totalByts.toLocaleString()} BYTS ({totalBytsValue.toFixed(2)}€)
             </p>
-            <p className={`text-[10px] font-mono font-bold ${totalNet >= 0 ? "text-green-400" : "text-red-500"}`}>
-              Bénéfice Net : {totalNet > 0 ? "+" : ""}{totalNet.toFixed(2)}€
+            <p className={`text-[10px] font-mono font-bold ${totalBalance >= 0 ? "text-zinc-500" : "text-red-500"}`}>
+              Cash : {totalBalance > 0 ? "+" : ""}{totalBalance.toFixed(2)}€
             </p>
-            <p className={`text-3xl font-mono font-bold mt-1 ${totalBalance >= 0 ? "text-green-400" : "text-red-500"}`}>
-              {totalBalance > 0 ? "+" : ""}{totalBalance.toFixed(2)}€
+            <p className={`text-3xl font-mono font-bold mt-1 ${totalNet >= 0 ? "text-green-400" : "text-red-500"}`}>
+              {totalNet > 0 ? "+" : ""}{totalNet.toFixed(2)}€
             </p>
+            <p className="text-[8px] uppercase tracking-widest text-zinc-600 font-bold">Bénéfice Net Total</p>
           </div>
         </header>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
-          <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl">
-            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-2">Bilan Sami</p>
-            <p className={`text-xl font-mono font-black ${netSami >= 0 ? "text-green-400" : "text-red-500"}`}>
-              {netSami > 0 ? "+" : ""}{netSami.toFixed(2)}€
-            </p>
-          </div>
-          <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl">
-            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-2">Bilan Brice</p>
-            <p className={`text-xl font-mono font-black ${netBrice >= 0 ? "text-green-400" : "text-red-500"}`}>
-              {netBrice > 0 ? "+" : ""}{netBrice.toFixed(2)}€
-            </p>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
           <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl flex items-center gap-4">
             <div className="bg-blue-500/10 p-3 rounded-full text-blue-400">
               <Users size={24} />
@@ -321,83 +308,106 @@ export default function Home() {
         </div>
 
         {/* Input Form */}
-        <div className="mb-2 px-2 text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex justify-between">
-          <span>Détails de la mission</span>
-          <span>Répartition</span>
-        </div>
-        <form onSubmit={handleSubmit} className={`p-2 rounded-2xl border flex flex-col md:flex-row gap-2 mb-12 shadow-2xl transition-all duration-300 ${editingId ? 'bg-zinc-800 border-yellow-500 ring-4 ring-yellow-500/10' : 'bg-zinc-900 border-zinc-700'}`}>
-          <input
-            required
-            className="flex-[2] bg-transparent p-4 outline-none text-white placeholder:text-zinc-600"
-            placeholder="Nom de la mission..."
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
-          <input
-            required
-            type="number"
-            step="0.01"
-            className="md:w-32 bg-black rounded-xl p-4 outline-none border border-zinc-800 focus:border-yellow-500 transition-colors font-mono font-bold text-yellow-500"
-            placeholder="€ +/-"
-            value={form.amount}
-            onChange={(e) => setForm({ ...form, amount: e.target.value })}
-          />
-          <input
-            required
-            type="number"
-            min="0"
-            className="md:w-32 bg-black rounded-xl p-4 outline-none border border-zinc-800 focus:border-yellow-500 transition-colors font-mono font-bold text-blue-400"
-            placeholder="Byts"
-            value={form.byts}
-            onChange={(e) => setForm({ ...form, byts: e.target.value })}
-          />
-          <input
-            required
-            type="date"
-            className="bg-black border border-zinc-800 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase text-zinc-400 focus:text-white transition-colors"
-            value={form.date}
-            onChange={(e) => setForm({ ...form, date: e.target.value })}
-          />
-          <select
-            className="bg-black border border-zinc-800 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase"
-            value={form.player}
-            onChange={(e) => setForm({ ...form, player: e.target.value })}
-          >
-            <option value="Sami">Sami</option>
-            <option value="Brice">Brice</option>
-          </select>
-          <select
-            className="md:w-40 bg-black border border-zinc-800 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase text-yellow-500"
-            value={form.share}
-            onChange={(e) => setForm({ ...form, share: e.target.value })}
-          >
-            <option value="50">Split 50/50</option>
-            <option value="75">
-              {form.player === "Sami" ? "Sami 75% / Brice 25%" : "Brice 75% / Sami 25%"}
-            </option>
-            <option value="25">
-              {form.player === "Sami" ? "Sami 25% / Brice 75%" : "Brice 25% / Sami 75%"}
-            </option>
-          </select>
-          <button
-            disabled={isSubmitting}
-            className={`${editingId ? 'bg-blue-500 hover:bg-blue-400' : 'bg-yellow-500 hover:bg-yellow-400'} disabled:opacity-50 text-black font-black px-8 py-4 rounded-xl transition-all flex items-center justify-center gap-2`}
-          >
-            {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : editingId ? <Pencil size={20} /> : <PlusCircle size={20} />}
-            {editingId ? "MODIFIER" : "AJOUTER"}
-          </button>
-          {editingId && (
-            <button
-              type="button"
-              onClick={() => {
-                setEditingId(null);
-                setForm({ name: "", amount: "", byts: "", share: "50", player: "Sami", date: new Date().toISOString().split('T')[0] });
-              }}
-              className="bg-zinc-700 hover:bg-zinc-600 text-white font-black px-4 py-4 rounded-xl transition-all flex items-center justify-center"
-            >
-              <X size={20} />
-            </button>
-          )}
+        <form onSubmit={handleSubmit} className={`p-4 md:p-6 rounded-3xl border flex flex-col gap-6 mb-12 shadow-2xl transition-all duration-300 ${editingId ? 'bg-zinc-800 border-yellow-500 ring-4 ring-yellow-500/10' : 'bg-zinc-900 border-zinc-700'}`}>
+          {/* Ligne 1 : Détails principaux */}
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="flex-[2] flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Mission</label>
+              <input
+                required
+                className="bg-black/50 border border-zinc-800 rounded-xl p-4 outline-none text-white placeholder:text-zinc-700 focus:border-zinc-600 transition-colors"
+                placeholder="Nom de la mission..."
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </div>
+            <div className="md:w-32 flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Cash €</label>
+              <input
+                required
+                type="number"
+                step="0.01"
+                className="bg-black rounded-xl p-4 outline-none border border-zinc-800 focus:border-yellow-500 transition-colors font-mono font-bold text-yellow-500"
+                placeholder="+/-"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+              />
+            </div>
+            <div className="md:w-32 flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Byts</label>
+              <input
+                required
+                type="number"
+                min="0"
+                className="bg-black rounded-xl p-4 outline-none border border-zinc-800 focus:border-blue-500 transition-colors font-mono font-bold text-blue-400"
+                placeholder="0"
+                value={form.byts}
+                onChange={(e) => setForm({ ...form, byts: e.target.value })}
+              />
+            </div>
+            <div className="flex-1 flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Date & Joueur</label>
+              <div className="flex gap-2">
+                <input
+                  required
+                  type="date"
+                  className="flex-1 bg-black border border-zinc-800 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase text-zinc-400 focus:text-white transition-colors"
+                  value={form.date}
+                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                />
+                <select
+                  className="flex-1 bg-black border border-zinc-800 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase"
+                  value={form.player}
+                  onChange={(e) => setForm({ ...form, player: e.target.value })}
+                >
+                  <option value="Sami">Sami</option>
+                  <option value="Brice">Brice</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Ligne 2 : Répartition et Validation */}
+          <div className="flex flex-col md:flex-row gap-4 items-end justify-between border-t border-zinc-800/50 pt-5">
+            <div className="flex flex-col gap-1.5 w-full md:w-auto">
+              <label className="text-[10px] font-bold text-yellow-500 uppercase tracking-widest px-1">Répartition des Gains (Split)</label>
+              <select
+                className="md:w-72 bg-zinc-800/50 border border-zinc-700 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase text-white focus:border-yellow-500 transition-colors"
+                value={form.share}
+                onChange={(e) => setForm({ ...form, share: e.target.value })}
+              >
+                <option value="50">Split 50% / 50%</option>
+                <option value="75">
+                  {form.player === "Sami" ? "Sami 75% / Brice 25%" : "Brice 75% / Sami 25%"}
+                </option>
+                <option value="25">
+                  {form.player === "Sami" ? "Sami 25% / Brice 75%" : "Brice 25% / Sami 75%"}
+                </option>
+              </select>
+            </div>
+
+            <div className="flex gap-2 w-full md:w-auto">
+              <button
+                disabled={isSubmitting}
+                className={`flex-1 md:flex-none ${editingId ? 'bg-blue-500 hover:bg-blue-400' : 'bg-yellow-500 hover:bg-yellow-400'} disabled:opacity-50 text-black font-black px-10 py-4 rounded-xl transition-all flex items-center justify-center gap-2`}
+              >
+                {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : editingId ? <Pencil size={20} /> : <PlusCircle size={20} />}
+                {editingId ? "MODIFIER LA MISSION" : "ENREGISTRER LA MISSION"}
+              </button>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingId(null);
+                    setForm({ name: "", amount: "", byts: "", share: "50", player: "Sami", date: new Date().toISOString().split('T')[0] });
+                  }}
+                  className="bg-zinc-700 hover:bg-zinc-600 text-white font-black px-4 py-4 rounded-xl transition-all flex items-center justify-center"
+                >
+                  <X size={20} />
+                </button>
+              )}
+            </div>
+          </div>
         </form>
 
         {/* Activity Log */}
@@ -445,7 +455,9 @@ export default function Home() {
                   </div>
                   <div className="space-y-2">
                     {dayMissions.map((m) => {
-                      const otherPlayer = m.player_name === "Sami" ? "Brice" : "Sami";
+                      const isSami = m.player_name.trim().toLowerCase() === "sami";
+                      const currentPlayer = isSami ? "Sami" : "Brice";
+                      const otherPlayer = isSami ? "Brice" : "Sami";
                       const sharePct = m.player_share || 50;
                       const otherSharePct = 100 - sharePct;
 
@@ -459,14 +471,14 @@ export default function Home() {
                       return (
                         <div key={m.id} className="bg-zinc-900/30 p-5 rounded-2xl border border-zinc-800/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-zinc-900 transition-colors group">
                           <div className="flex items-center gap-4">
-                            <div className={`p-2 rounded-full ${m.amount >= 0 ? "bg-green-500/10" : "bg-red-500/10"}`}>
-                              {m.amount >= 0 ? <TrendingUp size={18} className="text-green-500" /> : <TrendingDown size={18} className="text-red-500" />}
+                            <div className={`p-2 rounded-full ${missionNet >= 0 ? "bg-green-500/10" : "bg-red-500/10"}`}>
+                              {missionNet >= 0 ? <TrendingUp size={18} className="text-green-500" /> : <TrendingDown size={18} className="text-red-500" />}
                             </div>
                             <div>
                               <div className="font-bold text-zinc-200">{m.mission_name}</div>
                               <div className="flex gap-2 items-center mt-1">
                                 <span className="text-[9px] bg-zinc-800 px-2 py-1 rounded text-zinc-400 font-black uppercase italic tracking-tighter">
-                                  {sharePct === 50 ? `Split 50/50 (${m.player_name})` : `${m.player_name} ${sharePct}% / ${otherPlayer} ${otherSharePct}%`}
+                                  {sharePct === 50 ? `Split 50/50 (${currentPlayer})` : `${currentPlayer} ${sharePct}% / ${otherPlayer} ${otherSharePct}%`}
                                 </span>
                               </div>
                             </div>
@@ -481,8 +493,12 @@ export default function Home() {
 
                             {/* Colonne Partage (Dettes) */}
                             <div className="text-left sm:text-right min-w-[150px]">
-                              <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest whitespace-nowrap">Dû à {otherPlayer}</p>
-                              <p className="font-mono text-[10px] text-orange-400 font-bold leading-tight">{otherCashShare.toFixed(2)}€</p>
+                              <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest whitespace-nowrap">
+                                {otherCashShare >= 0 ? `Dû à ${otherPlayer}` : `Remboursement ${otherPlayer}`}
+                              </p>
+                              <p className={`font-mono text-[10px] font-bold leading-tight ${otherCashShare >= 0 ? "text-orange-400" : "text-zinc-400"}`}>
+                                {Math.abs(otherCashShare).toFixed(2)}€
+                              </p>
                             </div>
 
                             <div className="flex items-center gap-4 min-w-[180px] justify-end">
