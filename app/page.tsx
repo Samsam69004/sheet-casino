@@ -24,6 +24,7 @@ type Mission = {
   amount: number;
   player_name: string;
   byts: number;
+  player_share: number; // Pourcentage du joueur qui a fait la mission (ex: 50, 75, 25)
   date: string;
 };
 
@@ -39,6 +40,7 @@ export default function Home() {
     name: "",
     amount: "",
     byts: "",
+    share: "50", // Valeur par défaut
     player: "Sami",
     date: new Date().toISOString().split('T')[0]
   });
@@ -75,6 +77,7 @@ export default function Home() {
       mission_name: form.name,
       amount: parseFloat(form.amount),
       byts: parseInt(form.byts) || 0,
+      player_share: parseInt(form.share),
       player_name: form.player,
       date: form.date,
     };
@@ -95,7 +98,7 @@ export default function Home() {
 
       const missionNet = missionData.amount + (missionData.byts * BYTE_VALUE);
       if (missionNet > 0) {
-        setFeedback({ text: "voilààà GG championn, on vise le million", type: 'win' });
+        setFeedback({ text: "voilààà GG champion, on vise le million", type: 'win' });
       } else if (missionNet < 0) {
         setFeedback({ text: "comportement inadmissible, tu tires l'équipe vers le bas", type: 'loss' });
       }
@@ -106,6 +109,7 @@ export default function Home() {
         name: "",
         amount: "",
         byts: "",
+        share: "50",
       }));
       await fetchMissions();
     } catch (err: any) {
@@ -122,6 +126,7 @@ export default function Home() {
       name: m.mission_name,
       amount: m.amount.toString(),
       byts: (m.byts || 0).toString(),
+      share: (m.player_share || 50).toString(),
       player: m.player_name,
       date: m.date,
     });
@@ -159,22 +164,43 @@ export default function Home() {
 
   // Mémorisation des calculs pour la performance
   const { totalBalance, totalByts, totalBytsValue, totalNet, netSami, netBrice, splitAmount, debtMessage, groupedMissions, dailyRunningTotals } = useMemo(() => {
-    const total = missions.reduce((acc, m) => acc + Number(m.amount || 0), 0);
-    const byts = missions.reduce((acc, m) => acc + Number(m.byts || 0), 0);
-    const bytsValue = byts * BYTE_VALUE;
+    let total = 0;
+    let byts = 0;
+    let netSami = 0;
+    let netBrice = 0;
+    let cashSamiHas = 0;
+    let cashSamiShouldHave = 0;
 
-    const netSami = missions
-      .filter(m => m.player_name === "Sami")
-      .reduce((acc, m) => acc + (Number(m.amount) + (Number(m.byts || 0) * BYTE_VALUE)), 0);
-    const netBrice = missions
-      .filter(m => m.player_name === "Brice")
-      .reduce((acc, m) => acc + (Number(m.amount) + (Number(m.byts || 0) * BYTE_VALUE)), 0);
+    missions.forEach(m => {
+      const amount = Number(m.amount || 0);
+      const missionByts = Number(m.byts || 0);
+      const missionBytsEuro = missionByts * BYTE_VALUE;
+      const sharePct = m.player_share || 50; // Part du joueur qui a fait la mission
 
-    const sumSami = missions.filter(m => m.player_name === "Sami").reduce((acc, m) => acc + Number(m.amount || 0), 0);
-    const theoreticalShare = total / 2;
-    const debt = sumSami - theoreticalShare; // Si > 0, Sami a trop d'argent. Si < 0, Brice a trop d'argent.
+      total += amount;
+      byts += missionByts;
 
-    const debtMsg = debt === 0
+      const ownerNet = (amount + missionBytsEuro) * (sharePct / 100);
+      const otherNet = (amount + missionBytsEuro) * ((100 - sharePct) / 100);
+
+      const ownerCashShare = amount * (sharePct / 100);
+      const otherCashShare = amount * ((100 - sharePct) / 100);
+
+      if (m.player_name === "Sami") {
+        netSami += ownerNet;
+        netBrice += otherNet;
+        cashSamiHas += amount;
+        cashSamiShouldHave += ownerCashShare;
+      } else {
+        netBrice += ownerNet;
+        netSami += otherNet;
+        cashSamiShouldHave += otherCashShare;
+      }
+    });
+
+    const debt = cashSamiHas - cashSamiShouldHave;
+
+    const debtMsg = Math.abs(debt) < 0.01
       ? "Équilibre Parfait"
       : debt > 0
         ? { text: `Sami doit ${debt.toFixed(2)}€ à Brice`, type: 'debt' }
@@ -206,11 +232,11 @@ export default function Home() {
     return {
       totalBalance: total,
       totalByts: byts,
-      totalBytsValue: bytsValue,
-      totalNet: total + bytsValue,
+      totalBytsValue: byts * BYTE_VALUE,
+      totalNet: total + (byts * BYTE_VALUE),
       netSami,
       netBrice,
-      splitAmount: theoreticalShare,
+      splitAmount: total / 2,
       debtMessage: debtMsg,
       groupedMissions: grouped,
       dailyRunningTotals: cumulativeDailyNets,
@@ -275,24 +301,30 @@ export default function Home() {
               <Users size={24} />
             </div>
             <div>
-              <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider">Part Individuelle (50%)</p>
-              <p className="text-2xl font-bold">{splitAmount.toFixed(2)}€</p>
-            </div>
-          </div>
-          <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl flex items-center gap-4">
-            <div className={`p-3 rounded-full ${typeof debtMessage === 'object' ? "bg-orange-500/10 text-orange-400" : "bg-purple-500/10 text-purple-400"}`}>
-              <Wallet size={24} />
-            </div>
-            <div>
               <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider">Règlement des Comptes</p>
               <p className="text-lg font-bold leading-tight">
                 {typeof debtMessage === 'string' ? debtMessage : debtMessage.text}
               </p>
             </div>
           </div>
+          <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl flex items-center gap-4">
+            <div className={`p-3 rounded-full bg-purple-500/10 text-purple-400`}>
+              <Wallet size={24} />
+            </div>
+            <div>
+              <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider">Total Cash (Collectif)</p>
+              <p className={`text-2xl font-bold ${totalBalance >= 0 ? "text-green-400" : "text-red-500"}`}>
+                {totalBalance.toFixed(2)}€
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Input Form */}
+        <div className="mb-2 px-2 text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex justify-between">
+          <span>Détails de la mission</span>
+          <span>Répartition</span>
+        </div>
         <form onSubmit={handleSubmit} className={`p-2 rounded-2xl border flex flex-col md:flex-row gap-2 mb-12 shadow-2xl transition-all duration-300 ${editingId ? 'bg-zinc-800 border-yellow-500 ring-4 ring-yellow-500/10' : 'bg-zinc-900 border-zinc-700'}`}>
           <input
             required
@@ -334,6 +366,19 @@ export default function Home() {
             <option value="Sami">Sami</option>
             <option value="Brice">Brice</option>
           </select>
+          <select
+            className="md:w-40 bg-black border border-zinc-800 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase text-yellow-500"
+            value={form.share}
+            onChange={(e) => setForm({ ...form, share: e.target.value })}
+          >
+            <option value="50">Split 50/50</option>
+            <option value="75">
+              {form.player === "Sami" ? "Sami 75% / Brice 25%" : "Brice 75% / Sami 25%"}
+            </option>
+            <option value="25">
+              {form.player === "Sami" ? "Sami 25% / Brice 75%" : "Brice 25% / Sami 75%"}
+            </option>
+          </select>
           <button
             disabled={isSubmitting}
             className={`${editingId ? 'bg-blue-500 hover:bg-blue-400' : 'bg-yellow-500 hover:bg-yellow-400'} disabled:opacity-50 text-black font-black px-8 py-4 rounded-xl transition-all flex items-center justify-center gap-2`}
@@ -346,7 +391,7 @@ export default function Home() {
               type="button"
               onClick={() => {
                 setEditingId(null);
-                setForm({ name: "", amount: "", byts: "", player: "Sami", date: new Date().toISOString().split('T')[0] });
+                setForm({ name: "", amount: "", byts: "", share: "50", player: "Sami", date: new Date().toISOString().split('T')[0] });
               }}
               className="bg-zinc-700 hover:bg-zinc-600 text-white font-black px-4 py-4 rounded-xl transition-all flex items-center justify-center"
             >
@@ -401,14 +446,15 @@ export default function Home() {
                   <div className="space-y-2">
                     {dayMissions.map((m) => {
                       const otherPlayer = m.player_name === "Sami" ? "Brice" : "Sami";
-                      const share = Math.abs(Number(m.amount)) / 2;
+                      const sharePct = m.player_share || 50;
+                      const otherSharePct = 100 - sharePct;
+
+                      const ownerCashShare = Number(m.amount) * (sharePct / 100);
+                      const otherCashShare = Number(m.amount) * (otherSharePct / 100);
+
                       const missionByts = Number(m.byts || 0);
                       const missionBytsEuro = missionByts * BYTE_VALUE;
-                      const missionNet = Number(m.amount) + missionBytsEuro; // Bénéfice Net par mission
-
-                      const missionDebt = Number(m.amount) > 0
-                        ? `${m.player_name} doit ${share.toFixed(2)}€ à ${otherPlayer}`
-                        : `${otherPlayer} doit ${share.toFixed(2)}€ à ${m.player_name}`;
+                      const missionNet = Number(m.amount) + missionBytsEuro;
 
                       return (
                         <div key={m.id} className="bg-zinc-900/30 p-5 rounded-2xl border border-zinc-800/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-zinc-900 transition-colors group">
@@ -419,8 +465,8 @@ export default function Home() {
                             <div>
                               <div className="font-bold text-zinc-200">{m.mission_name}</div>
                               <div className="flex gap-2 items-center mt-1">
-                                <span className="text-[9px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400 font-black uppercase italic tracking-tighter">
-                                  {m.player_name}
+                                <span className="text-[9px] bg-zinc-800 px-2 py-1 rounded text-zinc-400 font-black uppercase italic tracking-tighter">
+                                  {sharePct === 50 ? `Split 50/50 (${m.player_name})` : `${m.player_name} ${sharePct}% / ${otherPlayer} ${otherSharePct}%`}
                                 </span>
                               </div>
                             </div>
@@ -435,8 +481,8 @@ export default function Home() {
 
                             {/* Colonne Partage (Dettes) */}
                             <div className="text-left sm:text-right min-w-[150px]">
-                              <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest whitespace-nowrap">Transfert pour 50/50</p>
-                              <p className="font-mono text-[10px] text-orange-400 font-bold leading-tight">{missionDebt}</p>
+                              <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest whitespace-nowrap">Dû à {otherPlayer}</p>
+                              <p className="font-mono text-[10px] text-orange-400 font-bold leading-tight">{otherCashShare.toFixed(2)}€</p>
                             </div>
 
                             <div className="flex items-center gap-4 min-w-[180px] justify-end">
