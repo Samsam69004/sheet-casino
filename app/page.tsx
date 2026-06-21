@@ -1,52 +1,108 @@
+// Betify Tracker v1.4.1 - Restored version
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/app/supabase";
-import {
-  PlusCircle,
-  TrendingUp,
-  TrendingDown,
-  Users,
-  Wallet,
-  Loader2,
-  History,
-  Trash2,
-  Pencil,
-  X,
-  Trophy,
-  AlertTriangle,
-} from "lucide-react";
+import { PlusCircle, TrendingUp, History, Trash2, Loader2, Coins, Calculator, RefreshCcw } from "lucide-react";
 
+// --- Types ---
 type Mission = {
   id: string;
+  description: string;
+  cash_amount: number;
+  byts_amount: number;
+  player: "Sami" | "Brice";
+  split_strategy: "50/50" | "sami75" | "brice75";
+  date: string;
   created_at: string;
-  mission_name: string;
-  amount: number;
-  player_name: string;
-  byts: number;
-  player_share: number; // Pourcentage du joueur qui a fait la mission (ex: 50, 75, 25)
+};
+
+type MissionForm = {
+  description: string;
+  cash: string;
+  byts: string;
+  player: "Sami" | "Brice";
+  split: "50/50" | "sami75" | "brice75";
   date: string;
 };
 
-const BYTE_VALUE = 50 / 8000; // 1 byte = 0.00625€
+function describeAppError(err: unknown) {
+  if (err instanceof Error) {
+    const parts = [err.name, err.message, err.cause instanceof Error ? err.cause.message : ""]
+      .filter((part) => typeof part === "string" && part.trim().length > 0);
 
-export default function Home() {
+    if (parts.length > 0) {
+      return parts.join(" | ");
+    }
+
+    return err.toString();
+  }
+
+  if (err && typeof err === "object") {
+    const typedErr = err as Record<string, unknown>;
+    const rawProps = new Set([
+      ...Object.getOwnPropertyNames(err),
+      ...Object.keys(typedErr)
+    ]);
+
+    const candidateValues = Array.from(rawProps)
+      .map((key) => typedErr[key])
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+    const parts = [
+      typedErr.message,
+      typedErr.code,
+      typedErr.details,
+      typedErr.hint,
+      typedErr.error,
+      typedErr.error_description,
+      typedErr.status,
+      typedErr.statusText,
+      ...candidateValues
+    ].filter((part): part is string => typeof part === "string" && part.trim().length > 0);
+
+    if (parts.length > 0) {
+      return parts.join(" | ");
+    }
+
+    const ctorName = (err as { constructor?: { name?: string } }).constructor?.name;
+    if (ctorName && ctorName !== "Object") {
+      return ctorName;
+    }
+
+    try {
+      const stringified = JSON.stringify(err, Object.getOwnPropertyNames(err));
+      if (stringified && stringified !== "{}") {
+        return stringified;
+      }
+    } catch {
+    }
+
+    return "Erreur inconnue Supabase";
+  }
+
+  if (typeof err === "string" && err.trim()) {
+    return err;
+  }
+
+  return "Erreur inconnue Supabase";
+}
+
+export default function MissionsPage() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ text: string; type: 'win' | 'loss' } | null>(null);
-  const [form, setForm] = useState({
-    name: "",
-    amount: "",
-    byts: "",
-    share: "50", // Valeur par défaut
+  const [errorMessage, setErrorMessage] = useState("");
+  const [form, setForm] = useState<MissionForm>({
+    description: "",
+    cash: "",
+    byts: "0",
     player: "Sami",
-    date: new Date().toISOString().split('T')[0]
+    split: "50/50",
+    date: new Date().toISOString().split("T")[0]
   });
 
   useEffect(() => {
-    console.log("App betify-tracker v1.4.1 initialisée");
     fetchMissions();
   }, []);
 
@@ -58,484 +114,294 @@ export default function Home() {
         .select("*")
         .order("date", { ascending: false })
         .order("created_at", { ascending: false });
-
       if (error) throw error;
       if (data) setMissions(data);
-    } catch (err) {
-      console.error("Erreur lors de la récupération des missions:", err);
+    } catch {
+      setErrorMessage("Impossible de charger les missions.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.name || !form.amount) return;
-
-    setIsSubmitting(true);
-    const missionData = {
-      mission_name: form.name,
-      amount: parseFloat(form.amount),
-      byts: parseInt(form.byts) || 0,
-      player_share: parseInt(form.share),
-      player_name: form.player,
-      date: form.date,
-    };
-
-    try {
-      if (editingId) {
-        const { error } = await supabase
-          .from("missions")
-          .update(missionData)
-          .eq("id", editingId);
-
-        if (error) throw error;
-        setEditingId(null);
-      } else {
-        const { error } = await supabase.from("missions").insert([missionData]);
-        if (error) throw error;
-      }
-
-      const missionNet = missionData.amount + (missionData.byts * BYTE_VALUE);
-      if (missionNet > 0) {
-        setFeedback({ text: "voilààà GG champion, on vise le million", type: 'win' });
-      } else if (missionNet < 0) {
-        setFeedback({ text: "comportement inadmissible, tu tires l'équipe vers le bas", type: 'loss' });
-      }
-      setTimeout(() => setFeedback(null), 5000);
-
-      setForm(prev => ({
-        ...prev,
-        name: "",
-        amount: "",
-        byts: "",
-        share: "50",
-      }));
-      await fetchMissions();
-    } catch (err: any) {
-      console.error("Erreur Supabase:", err);
-      alert(`Erreur : ${err.message || "Action impossible"}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  function startEditing(m: Mission) {
-    setEditingId(m.id);
-    setForm({
-      name: m.mission_name,
-      amount: m.amount.toString(),
-      byts: (m.byts || 0).toString(),
-      share: (m.player_share || 50).toString(),
-      player: m.player_name,
-      date: m.date,
-    });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  async function deleteMission(id: string) {
-    if (!confirm("Supprimer cette mission ?")) return;
-    try {
-      const { error } = await supabase.from("missions").delete().eq("id", id);
-      if (error) throw error;
-      await fetchMissions();
-    } catch (err: any) {
-      console.error("Erreur suppression:", err);
-      alert("Erreur lors de la suppression.");
-    }
-  }
-
-  async function resetHistory() {
-    if (!confirm("⚠️ ATTENTION : Voulez-vous vraiment supprimer TOUT l'historique ?")) return;
-
-    setIsSubmitting(true);
-    try {
-      // On utilise un filtre qui ne correspond à rien de précis mais autorise la suppression globale
-      const { error } = await supabase.from("missions").delete().neq("id", "_none_");
-      if (error) throw error;
-      await fetchMissions();
-    } catch (err: any) {
-      console.error("Erreur lors du reset:", err);
-      alert("Impossible de réinitialiser l'historique.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  // Mémorisation des calculs pour la performance
-  const { totalBalance, totalByts, totalBytsValue, totalNet, splitAmount, debtMessage, groupedMissions, dailyRunningTotals } = useMemo(() => {
-    let total = 0;
-    let byts = 0;
-    let netSami = 0;
-    let netBrice = 0;
-    let cashSamiHas = 0;
-    let cashSamiShouldHave = 0;
+  const totals = useMemo(() => {
+    let totalByts = 0;
+    let totalCash = 0;
+    let samiOwesBrice = 0;
 
     missions.forEach(m => {
-      const amount = Number(m.amount || 0);
-      const missionByts = Number(m.byts || 0);
-      const missionBytsEuro = missionByts * BYTE_VALUE;
-      const sharePct = m.player_share || 50; // Part du joueur qui a fait la mission
+      totalByts += m.byts_amount;
+      totalCash += m.cash_amount;
 
-      total += amount;
-      byts += missionByts;
+      let ratios = { sami: 0.5, brice: 0.5 };
+      if (m.split_strategy === "sami75") ratios = { sami: 0.75, brice: 0.25 };
+      if (m.split_strategy === "brice75") ratios = { sami: 0.25, brice: 0.75 };
 
-      const ownerNet = (amount + missionBytsEuro) * (sharePct / 100);
-      const otherNet = (amount + missionBytsEuro) * ((100 - sharePct) / 100);
-
-      const ownerCashShare = amount * (sharePct / 100);
-      const otherCashShare = amount * ((100 - sharePct) / 100);
-
-      if (m.player_name === "Sami") {
-        netSami += ownerNet;
-        netBrice += otherNet;
-        cashSamiHas += amount;
-        cashSamiShouldHave += ownerCashShare;
+      if (m.player === "Sami") {
+        samiOwesBrice += (m.cash_amount * ratios.brice);
       } else {
-        netBrice += ownerNet;
-        netSami += otherNet;
-        cashSamiShouldHave += otherCashShare;
+        samiOwesBrice -= (m.cash_amount * ratios.sami);
       }
     });
 
-    const debt = cashSamiHas - cashSamiShouldHave;
-
-    const debtMsg = Math.abs(debt) < 0.01
-      ? "Équilibre Parfait"
-      : debt > 0
-        ? { text: `Sami doit ${debt.toFixed(2)}€ à Brice`, type: 'debt' }
-        : { text: `Brice doit ${Math.abs(debt).toFixed(2)}€ à Sami`, type: 'debt' };
-
-    const grouped = missions.reduce((groups: Record<string, Mission[]>, mission) => {
-      const date = mission.date;
-      if (!groups[date]) groups[date] = [];
-      groups[date].push(mission);
-      return groups;
-    }, {} as Record<string, Mission[]>);
-
-    // Calcul des totaux nets quotidiens et du cumul quotidien
-    const sortedDates = Object.keys(grouped).sort((a, b) => a.localeCompare(b)); // Tri des dates par ordre croissant
-    const cumulativeDailyNets: Record<string, number> = {};
-    let currentCumulativeNet = 0;
-
-    for (const date of sortedDates) {
-      const dayMissions = grouped[date];
-      const dayNet = dayMissions.reduce((acc, m) => acc + (Number(m.amount) + (Number(m.byts || 0) * BYTE_VALUE)), 0);
-      currentCumulativeNet += dayNet;
-      cumulativeDailyNets[date] = currentCumulativeNet;
-    }
-
-    // Les missions sont triées par date descendante pour l'affichage,
-    // mais le cumul est calculé sur les dates ascendantes.
-    // On utilisera cumulativeDailyNets[date] pour récupérer la bonne valeur.
-
     return {
-      totalBalance: total,
-      totalByts: byts,
-      totalBytsValue: byts * BYTE_VALUE,
-      totalNet: total + (byts * BYTE_VALUE),
-      splitAmount: total / 2,
-      debtMessage: debtMsg,
-      groupedMissions: grouped,
-      dailyRunningTotals: cumulativeDailyNets,
+      totalByts,
+      totalCash,
+      netProfit: totalCash + (totalByts / 160),
+      samiOwesBrice
     };
   }, [missions]);
 
-  return (
-    <div className="min-h-screen bg-black text-white font-sans selection:bg-yellow-500/30">
-      {/* Feedback Animation */}
-      {feedback && (
-        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-50 animate-bounce pointer-events-none">
-          <div className={`${feedback.type === 'win' ? 'bg-green-500 border-green-400' : 'bg-red-600 border-red-500'} border-2 px-6 py-4 rounded-full shadow-[0_0_50px_rgba(0,0,0,0.5)] flex items-center gap-3`}>
-            {feedback.type === 'win' ? <Trophy className="text-white" /> : <AlertTriangle className="text-white" />}
-            <span className="font-black italic uppercase tracking-tighter text-white whitespace-nowrap">
-              {feedback.text}
-            </span>
-          </div>
-        </div>
-      )}
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.description) return;
 
-      <div className="max-w-4xl mx-auto px-6 py-12">
-        {/* Header */}
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 border-b border-zinc-800 pb-8 gap-6">
+    setErrorMessage("");
+    setIsSubmitting(true);
+
+    try {
+      const { error } = await supabase.from("missions").insert([
+        {
+          description: form.description,
+          cash_amount: parseFloat(form.cash) || 0,
+          byts_amount: parseFloat(form.byts) || 0,
+          player: form.player,
+          split_strategy: form.split,
+          date: form.date
+        }
+      ]);
+
+      if (error) throw error;
+
+      setForm({ ...form, description: "", cash: "", byts: "0" });
+      await fetchMissions();
+    } catch (err) {
+      const message = describeAppError(err);
+      setErrorMessage(`Impossible d'ajouter la mission. ${message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const deleteMission = async (id: string) => {
+    if (!confirm("Supprimer cette mission ?")) return;
+    await supabase.from("missions").delete().eq("id", id);
+    fetchMissions();
+  };
+
+  const resetTracker = async () => {
+    if (!confirm("Voulez-vous vraiment remettre tous les compteurs à zéro ?")) return;
+    try {
+      await supabase.from("missions").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      await fetchMissions();
+    } catch (err) {
+      setErrorMessage(`Impossible de réinitialiser le tracker. ${describeAppError(err)}`);
+    }
+  };
+
+  // Groupement par date avec calculs journaliers et cumulés
+  const groupedMissions = useMemo(() => {
+    const groups: Record<string, Mission[]> = {};
+    const sorted = [...missions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    let runningNet = 0;
+    const dateStats: Record<string, { dayProfit: number, dayCash: number, netCumule: number }> = {};
+
+    sorted.forEach(m => {
+      if (!groups[m.date]) groups[m.date] = [];
+      groups[m.date].push(m);
+
+      const profit = m.cash_amount + (m.byts_amount / 160);
+      runningNet += profit;
+
+      if (!dateStats[m.date]) {
+        dateStats[m.date] = { dayProfit: 0, dayCash: 0, netCumule: 0 };
+      }
+      dateStats[m.date].dayProfit += profit;
+      dateStats[m.date].dayCash += m.cash_amount;
+      dateStats[m.date].netCumule = runningNet;
+    });
+
+    const reversedDates = Object.keys(groups).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    return { groups, reversedDates, dateStats };
+  }, [missions]);
+
+  const getLineDetails = (m: Mission) => {
+    const bytsValue = m.byts_amount / 160;
+    const net = m.cash_amount + bytsValue;
+
+    let ratios = { sami: 0.5, brice: 0.5 };
+    if (m.split_strategy === "sami75") ratios = { sami: 0.75, brice: 0.25 };
+    if (m.split_strategy === "brice75") ratios = { sami: 0.25, brice: 0.75 };
+
+    const other = m.player === "Sami" ? "Brice" : "Sami";
+    const amountOwed = m.player === "Sami" ? (m.cash_amount * ratios.brice) : (m.cash_amount * ratios.sami);
+
+    return { net, amountOwed, other, bytsValue };
+  };
+
+  return (
+    <div className="min-h-screen bg-black text-white p-6 font-sans">
+      <div className="max-w-4xl mx-auto">
+        <header className="mb-12 border-b border-zinc-800 pb-8 flex justify-between items-end">
           <div>
-            <h1 className="text-4xl font-black tracking-tighter italic text-yellow-500">
-              BETIFY <span className="text-white">TRACKER</span>
+            <h1 className="text-4xl font-black tracking-tighter italic">
+              BETIFY <span className="text-yellow-500">TRACKER</span>
             </h1>
-            <p className="text-[8px] text-zinc-800 uppercase tracking-widest font-bold">Production v1.4.1</p>
-            <p className="text-zinc-500 font-medium mt-1">Bilan Partagé : Sami & Brice</p>
-            <p className="text-[10px] text-zinc-600 font-bold uppercase mt-2">{missions.length} Missions Enregistrées</p>
+            <p className="text-zinc-500 mt-2 font-bold text-xs uppercase tracking-widest">Production v1.4.1</p>
           </div>
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl min-w-[280px] flex flex-col gap-1">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Balance Collective</p>
-            <p className="text-[10px] font-mono text-yellow-500/50">
-              {totalByts.toLocaleString()} BYTS ({totalBytsValue.toFixed(2)}€)
-            </p>
-            <p className={`text-[10px] font-mono font-bold ${totalBalance >= 0 ? "text-zinc-500" : "text-red-500"}`}>
-              Cash : {totalBalance > 0 ? "+" : ""}{totalBalance.toFixed(2)}€
-            </p>
-            <p className={`text-3xl font-mono font-bold mt-1 ${totalNet >= 0 ? "text-green-400" : "text-red-500"}`}>
-              {totalNet > 0 ? "+" : ""}{totalNet.toFixed(2)}€
-            </p>
-            <p className="text-[8px] uppercase tracking-widest text-zinc-600 font-bold">Bénéfice Net Total</p>
+          <div className="text-right">
+            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">Bilan Partagé : Sami & Brice</p>
+            <p className="text-xl font-mono font-black text-yellow-500">{missions.length} Missions Enregistrées</p>
           </div>
         </header>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
-          <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl flex items-center gap-4">
-            <div className="bg-blue-500/10 p-3 rounded-full text-blue-400">
-              <Users size={24} />
-            </div>
-            <div>
-              <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider">Règlement des Comptes</p>
-              <p className="text-lg font-bold leading-tight">
-                {typeof debtMessage === 'string' ? debtMessage : debtMessage.text}
-              </p>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
+            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2"><Coins size={12}/> Balance Collective</p>
+            <p className="text-xl font-mono font-bold mt-2">{totals.totalByts.toLocaleString()} BYTS <span className="text-zinc-500">({(totals.totalByts / 160).toFixed(2)}€)</span></p>
+            <p className="text-sm text-zinc-400 mt-1">Total Cash (Collectif) : <span className={totals.totalCash >= 0 ? "text-green-500" : "text-red-500"}>{totals.totalCash.toFixed(2)}€</span></p>
           </div>
-          <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl flex items-center gap-4">
-            <div className={`p-3 rounded-full bg-purple-500/10 text-purple-400`}>
-              <Wallet size={24} />
-            </div>
-            <div>
-              <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider">Total Cash (Collectif)</p>
-              <p className={`text-2xl font-bold ${totalBalance >= 0 ? "text-green-400" : "text-red-500"}`}>
-                {totalBalance.toFixed(2)}€
-              </p>
-            </div>
+          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl border-l-4 border-l-yellow-500">
+            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">Bénéfice Net Total</p>
+            <p className={`text-3xl font-mono font-black mt-1 ${totals.netProfit >= 0 ? "text-green-400" : "text-red-500"}`}>
+              {totals.netProfit >= 0 ? "+" : ""}{totals.netProfit.toFixed(2)}€
+            </p>
+          </div>
+          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl">
+            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2"><Calculator size={12}/> Règlement des Comptes</p>
+            <p className="text-sm font-bold mt-2">
+              {totals.samiOwesBrice > 0 ? `Sami doit ${Math.abs(totals.samiOwesBrice).toFixed(2)}€ à Brice` : totals.samiOwesBrice < 0 ? `Brice doit ${Math.abs(totals.samiOwesBrice).toFixed(2)}€ à Sami` : "Équilibre parfait"}
+            </p>
           </div>
         </div>
 
-        {/* Input Form */}
-        <form onSubmit={handleSubmit} className={`p-4 md:p-6 rounded-3xl border flex flex-col gap-6 mb-12 shadow-2xl transition-all duration-300 ${editingId ? 'bg-zinc-800 border-yellow-500 ring-4 ring-yellow-500/10' : 'bg-zinc-900 border-zinc-700'}`}>
-          {/* Ligne 1 : Détails principaux */}
-          <div className="flex flex-col md:flex-row gap-3">
-            <div className="flex-[2] flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Mission</label>
-              <input
-                required
-                className="bg-black/50 border border-zinc-800 rounded-xl p-4 outline-none text-white placeholder:text-zinc-700 focus:border-zinc-600 transition-colors"
+        <form onSubmit={handleSubmit} className="bg-zinc-900 border border-zinc-700 p-6 rounded-3xl mb-12 shadow-2xl">
+          {errorMessage ? (
+            <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {errorMessage}
+            </div>
+          ) : null}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase px-1">Mission</label>
+              <input required className="bg-black border border-zinc-800 rounded-xl p-3 outline-none focus:border-yellow-500 transition-colors"
                 placeholder="Nom de la mission..."
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                value={form.description}
+                onChange={e => setForm({...form, description: e.target.value})}
               />
             </div>
-            <div className="md:w-32 flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Cash €</label>
-              <input
-                required
-                type="number"
-                step="0.01"
-                className="bg-black rounded-xl p-4 outline-none border border-zinc-800 focus:border-yellow-500 transition-colors font-mono font-bold text-yellow-500"
-                placeholder="+/-"
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase px-1">Cash € +/-</label>
+              <input type="number" step="0.01" className="bg-black border border-zinc-800 rounded-xl p-3 outline-none text-green-400 font-bold"
+                value={form.cash}
+                onChange={e => setForm({...form, cash: e.target.value})}
               />
             </div>
-            <div className="md:w-32 flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Byts</label>
-              <input
-                required
-                type="number"
-                min="0"
-                className="bg-black rounded-xl p-4 outline-none border border-zinc-800 focus:border-blue-500 transition-colors font-mono font-bold text-blue-400"
-                placeholder="0"
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase px-1">Byts</label>
+              <input type="number" className="bg-black border border-zinc-800 rounded-xl p-3 outline-none text-yellow-500 font-bold"
                 value={form.byts}
-                onChange={(e) => setForm({ ...form, byts: e.target.value })}
+                onChange={e => setForm({...form, byts: e.target.value})}
               />
             </div>
-            <div className="flex-1 flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-1">Date & Joueur</label>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase px-1">Date & Joueur</label>
               <div className="flex gap-2">
-                <input
-                  required
-                  type="date"
-                  className="flex-1 bg-black border border-zinc-800 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase text-zinc-400 focus:text-white transition-colors"
+                <input type="date" className="bg-black border border-zinc-800 rounded-xl p-3 text-xs flex-1 outline-none"
                   value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                  onChange={e => setForm({...form, date: e.target.value})}
                 />
-                <select
-                  className="flex-1 bg-black border border-zinc-800 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase"
+                <select className="bg-black border border-zinc-800 rounded-xl p-3 text-xs font-bold outline-none"
                   value={form.player}
-                  onChange={(e) => setForm({ ...form, player: e.target.value })}
+                  onChange={e => setForm({ ...form, player: e.target.value as MissionForm["player"] })}
                 >
-                  <option value="Sami">Sami</option>
-                  <option value="Brice">Brice</option>
+                  <option value="Sami">SAMI</option>
+                  <option value="Brice">BRICE</option>
                 </select>
               </div>
             </div>
-          </div>
-
-          {/* Ligne 2 : Répartition et Validation */}
-          <div className="flex flex-col md:flex-row gap-4 items-end justify-between border-t border-zinc-800/50 pt-5">
-            <div className="flex flex-col gap-1.5 w-full md:w-auto">
-              <label className="text-[10px] font-bold text-yellow-500 uppercase tracking-widest px-1">Répartition des Gains (Split)</label>
-              <select
-                className="md:w-72 bg-zinc-800/50 border border-zinc-700 rounded-xl px-4 py-4 outline-none font-bold text-xs uppercase text-white focus:border-yellow-500 transition-colors"
-                value={form.share}
-                onChange={(e) => setForm({ ...form, share: e.target.value })}
+            <div className="flex flex-col gap-1.5 col-span-2">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase px-1">Répartition des Gains (Split)</label>
+              <select className="bg-black border border-zinc-800 rounded-xl p-3 text-xs font-bold outline-none"
+                value={form.split}
+                onChange={e => setForm({ ...form, split: e.target.value as MissionForm["split"] })}
               >
-                <option value="50">Split 50% / 50%</option>
-                <option value="75">
-                  {form.player === "Sami" ? "Sami 75% / Brice 25%" : "Brice 75% / Sami 25%"}
-                </option>
-                <option value="25">
-                  {form.player === "Sami" ? "Sami 25% / Brice 75%" : "Brice 25% / Sami 75%"}
-                </option>
+                <option value="50/50">Split 50% / 50%</option>
+                <option value="sami75">Sami 75% / Brice 25%</option>
+                <option value="brice75">Brice 75% / Sami 25%</option>
               </select>
             </div>
-
-            <div className="flex gap-2 w-full md:w-auto">
-              <button
-                disabled={isSubmitting}
-                className={`flex-1 md:flex-none ${editingId ? 'bg-blue-500 hover:bg-blue-400' : 'bg-yellow-500 hover:bg-yellow-400'} disabled:opacity-50 text-black font-black px-10 py-4 rounded-xl transition-all flex items-center justify-center gap-2`}
-              >
-                {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : editingId ? <Pencil size={20} /> : <PlusCircle size={20} />}
-                {editingId ? "MODIFIER LA MISSION" : "ENREGISTRER LA MISSION"}
-              </button>
-              {editingId && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingId(null);
-                    setForm({ name: "", amount: "", byts: "", share: "50", player: "Sami", date: new Date().toISOString().split('T')[0] });
-                  }}
-                  className="bg-zinc-700 hover:bg-zinc-600 text-white font-black px-4 py-4 rounded-xl transition-all flex items-center justify-center"
-                >
-                  <X size={20} />
-                </button>
-              )}
-            </div>
           </div>
+          <button disabled={isSubmitting} className="w-full bg-white hover:bg-yellow-500 hover:text-black text-black font-black px-8 py-4 rounded-xl transition-all flex items-center justify-center gap-2">
+            {isSubmitting ? <Loader2 className="animate-spin" /> : <PlusCircle size={18} />}
+            ENREGISTRER LA MISSION
+          </button>
         </form>
 
-        {/* Activity Log */}
-        <div className="space-y-3">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="flex items-center gap-2 text-xs font-black text-zinc-600 uppercase tracking-widest">
-              <History size={14} /> Historique des Gains
-            </h3>
-            {missions.length > 0 && !editingId && (
-              <button
-                onClick={resetHistory}
-                className="text-[10px] font-bold text-zinc-700 hover:text-red-500 transition-colors flex items-center gap-1"
-              >
-                <Trash2 size={12} /> REMETTRE À ZÉRO
-              </button>
-            )}
+        <div className="space-y-8">
+          <div className="flex justify-between items-center">
+            <h3 className="flex items-center gap-2 text-xs font-black text-zinc-600 uppercase tracking-widest"><History size={14} /> Historique des Gains</h3>
+            <button onClick={resetTracker} className="text-[10px] font-bold text-zinc-700 hover:text-red-500 flex items-center gap-1 transition-colors"><RefreshCcw size={10}/> REMETTRE À ZÉRO</button>
           </div>
+
           {loading ? (
-            <div className="text-center py-20 text-zinc-700 italic animate-pulse">Synchronisation...</div>
+            <div className="text-center py-10 text-zinc-700 animate-pulse italic">Chargement...</div>
           ) : (
-            Object.entries(groupedMissions)
-              .sort((a, b) => b[0].localeCompare(a[0]))
-              .map(([date, dayMissions]) => {
-              const dayCash = dayMissions.reduce((acc, m) => acc + Number(m.amount || 0), 0);
-              const dayNet = dayMissions.reduce((acc, m) => acc + (Number(m.amount) + (Number(m.byts || 0) * BYTE_VALUE)), 0);
-              const dayNetCumulated = dailyRunningTotals[date] || 0; // Net cumulé jusqu'à cette journée
+            groupedMissions.reversedDates.map((date) => {
+              const stats = groupedMissions.dateStats[date];
+              const dateMissions = groupedMissions.groups[date];
+
               return (
-                <div key={date} className="mb-8">
-                  <div className="flex justify-between items-center px-2 mb-2">
-                    <span className="text-zinc-400 font-bold text-sm">
-                      {new Date(date).toLocaleDateString("fr-FR", { weekday: 'long', day: 'numeric', month: 'long' })}
-                    </span>
-                    <div className="flex flex-col items-end">
-                      <span className={`text-sm font-bold ${dayNet >= 0 ? "text-green-500" : "text-red-500"}`}>
-                        Bénéfice Jour : {dayNet > 0 ? "+" : ""}{dayNet.toFixed(2)}€
-                      </span>
-                      <div className="flex gap-2 items-center">
-                        <span className="text-[9px] text-zinc-600 font-mono italic">Cash: {dayCash > 0 ? "+" : ""}{dayCash.toFixed(2)}€</span>
-                        <span className="text-zinc-800 text-[10px]">|</span>
-                        <span className={`text-[10px] font-mono font-bold ${dayNetCumulated >= 0 ? "text-green-400" : "text-red-500"}`}>
-                          Net Cumulé : {dayNetCumulated > 0 ? "+" : ""}{dayNetCumulated.toFixed(2)}€
-                        </span>
-                      </div>
+                <div key={date} className="space-y-3">
+                  <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                    <span className="font-black text-sm text-zinc-200 capitalize">{new Date(date).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+                    <div className="flex gap-4 text-[10px] font-bold uppercase tracking-tighter">
+                      <span className={stats.dayProfit >= 0 ? "text-green-500" : "text-red-500"}>Bénéfice Jour : {stats.dayProfit >= 0 ? "+" : ""}{stats.dayProfit.toFixed(2)}€</span>
+                      <span className="text-zinc-600">Cash: {stats.dayCash.toFixed(2)}€</span>
+                      <span className="text-zinc-500">|</span>
+                      <span className="text-yellow-500/70">Net Cumulé : {stats.netCumule >= 0 ? "+" : ""}{stats.netCumule.toFixed(2)}€</span>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    {dayMissions.map((m) => {
-                      const isSami = m.player_name.trim().toLowerCase() === "sami";
-                      const currentPlayer = isSami ? "Sami" : "Brice";
-                      const otherPlayer = isSami ? "Brice" : "Sami";
-                      const sharePct = m.player_share || 50;
-                      const otherSharePct = 100 - sharePct;
-
-                      const ownerCashShare = Number(m.amount) * (sharePct / 100);
-                      const otherCashShare = Number(m.amount) * (otherSharePct / 100);
-
-                      const missionByts = Number(m.byts || 0);
-                      const missionBytsEuro = missionByts * BYTE_VALUE;
-                      const missionNet = Number(m.amount) + missionBytsEuro;
-
-                      return (
-                        <div key={m.id} className="bg-zinc-900/30 p-5 rounded-2xl border border-zinc-800/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-zinc-900 transition-colors group">
-                          <div className="flex items-center gap-4">
-                            <div className={`p-2 rounded-full ${missionNet >= 0 ? "bg-green-500/10" : "bg-red-500/10"}`}>
-                              {missionNet >= 0 ? <TrendingUp size={18} className="text-green-500" /> : <TrendingDown size={18} className="text-red-500" />}
-                            </div>
-                            <div>
-                              <div className="font-bold text-zinc-200">{m.mission_name}</div>
-                              <div className="flex gap-2 items-center mt-1">
-                                <span className="text-[9px] bg-zinc-800 px-2 py-1 rounded text-zinc-400 font-black uppercase italic tracking-tighter">
-                                  {sharePct === 50 ? `Split 50/50 (${currentPlayer})` : `${currentPlayer} ${sharePct}% / ${otherPlayer} ${otherSharePct}%`}
-                                </span>
-                              </div>
-                            </div>
+                  {dateMissions.map(m => {
+                    const { net, amountOwed } = getLineDetails(m);
+                    return (
+                      <div key={m.id} className="bg-zinc-900/40 border border-zinc-800 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4 group hover:bg-zinc-900 transition-colors">
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${m.cash_amount >= 0 ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"}`}>
+                            <TrendingUp size={20} className={m.cash_amount < 0 ? "rotate-180" : ""}/>
                           </div>
-
-                          <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 sm:gap-8 w-full sm:w-auto justify-between sm:justify-end">
-                            {/* Colonne Byts */}
-                            <div className="text-left sm:text-right">
-                              <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest">Récompense Byts</p>
-                              <p className="font-mono text-xs text-blue-400 font-bold">{missionByts.toLocaleString()} ({missionBytsEuro.toFixed(2)}€)</p>
-                            </div>
-
-                            {/* Colonne Partage (Dettes) */}
-                            <div className="text-left sm:text-right min-w-[150px]">
-                              <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest whitespace-nowrap">
-                                {otherCashShare >= 0 ? `Dû à ${otherPlayer}` : `Remboursement ${otherPlayer}`}
-                              </p>
-                              <p className={`font-mono text-[10px] font-bold leading-tight ${otherCashShare >= 0 ? "text-orange-400" : "text-zinc-400"}`}>
-                                {Math.abs(otherCashShare).toFixed(2)}€
-                              </p>
-                            </div>
-
-                            <div className="flex items-center gap-4 min-w-[180px] justify-end">
-                              <div className="text-right">
-                                <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest">Total Euros</p>
-                                <div className={`font-mono font-black text-lg ${m.amount >= 0 ? "text-green-400" : "text-red-500"}`}>
-                                  {m.amount > 0 ? "+" : ""}{Number(m.amount).toFixed(2)}€
-                                </div>
-                              </div>
-
-                              <div className="text-right border-l border-zinc-800 pl-4">
-                                <p className="text-[8px] text-zinc-600 uppercase font-black tracking-widest">Bénéfice Net</p>
-                                <div className={`font-mono font-black text-lg ${missionNet >= 0 ? "text-green-400" : "text-red-500"}`}>
-                                  {missionNet > 0 ? "+" : ""}{missionNet.toFixed(2)}€
-                                </div>
-                              </div>
-
-                              <div className="flex gap-1 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => startEditing(m)}
-                                  className="text-zinc-600 hover:text-blue-400 transition-colors p-2"
-                                >
-                                  <Pencil size={16} />
-                                </button>
-                                <button
-                                  onClick={() => deleteMission(m.id)}
-                                  className="text-zinc-600 hover:text-red-500 transition-colors p-2"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            </div>
+                          <div>
+                            <p className="font-bold text-sm">{m.description}</p>
+                            <p className="text-[10px] text-zinc-600 uppercase font-bold flex gap-2">
+                              <span>{m.split_strategy === "50/50" ? `Split 50/50 (${m.player})` : m.split_strategy}</span>
+                            </p>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div className="flex items-center gap-8 text-right">
+                          <div>
+                            <p className="text-[8px] text-zinc-500 uppercase font-black tracking-tighter">Récompense Byts</p>
+                            <p className="font-mono text-xs">{m.byts_amount.toLocaleString()} ({(m.byts_amount/160).toFixed(2)}€)</p>
+                            <p className="font-mono text-xs font-bold">{m.byts_amount.toLocaleString()} <span className="text-zinc-500">({(m.byts_amount / 160).toFixed(2)}€)</span></p>
+                          </div>
+                          <div>
+                            <p className="text-[8px] text-zinc-500 uppercase font-black tracking-tighter">{m.player === "Sami" ? "Dû à Brice" : "Dû à Sami"}</p>
+                            <p className="font-mono text-xs text-orange-400">{amountOwed.toFixed(2)}€</p>
+                          </div>
+                          <div>
+                            <p className="text-[8px] text-zinc-500 uppercase font-black tracking-tighter">Total Euros</p>
+                            <p className={`font-mono text-sm font-bold ${m.cash_amount >= 0 ? "text-green-400" : "text-red-400"}`}>{m.cash_amount >= 0 ? "+" : ""}{m.cash_amount.toFixed(2)}€</p>
+                          </div>
+                          <div className="border-l border-zinc-800 pl-4">
+                            <p className="text-[8px] text-zinc-500 uppercase font-black tracking-tighter">Bénéfice Net</p>
+                            <p className={`font-mono text-sm font-bold ${net >= 0 ? "text-green-400" : "text-red-400"}`}>{net >= 0 ? "+" : ""}{net.toFixed(2)}€</p>
+                          </div>
+                          <button onClick={() => deleteMission(m.id)} className="text-zinc-800 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={14} /></button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               );
             })
